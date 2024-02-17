@@ -5,6 +5,13 @@
             "name": "C++ Debugger",
             "type": "cppvsdbg",
             "request": "attach",
+        },
+        // created by vscode papyrus-lang papyrus.skyrimSpecialEdition.generateProject
+        {
+            "name": "Skyrim SE/AE",
+            "type": "papyrus",
+            "request": "attach",
+            "game": "skyrimSpecialEdition"
         }
     ]
 }
