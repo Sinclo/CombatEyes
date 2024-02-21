@@ -24,7 +24,7 @@ void SetupLog() {
 
 /*
  * Retrieves all eye head parts across the user's entire game, including mods.
- * However, this also excludes any eye head parts that are configured as "non-playable" or as an "extra part" 
+ * However, this also excludes any eye head parts that are configured as "non-playable", configured as an "extra part", or are missing the "validRaces" configuration
  */
 void GetAllEyeHeadParts() {
 
@@ -34,11 +34,10 @@ void GetAllEyeHeadParts() {
     // Specified head part type to search for
     const auto& expected_type = RE::BGSHeadPart::HeadPartType::kEyes;
 
-    // Only keep "eye" headParts that are configured as playable, and not configured as an "extra head part"
+    //Only keep "eye" headParts that are configured as playable, not configured as an "extra head part", and has a "validRaces" setting configured.
     logger::debug("There are {} HeadParts detected", head_parts.size());
     for (auto head_part : head_parts) {
-    
-        if (head_part->type == expected_type && !head_part->IsExtraPart() && head_part->GetPlayable()) {
+        if (head_part->type == expected_type && !head_part->IsExtraPart() && head_part->GetPlayable() && head_part->validRaces) {
     
             eye_color_list.push_back(head_part);
             logger::info("Detected 'Eyes' HeadPart: {}", head_part->GetFormEditorID());
@@ -52,7 +51,7 @@ void GetAllEyeHeadParts() {
  */
 RE::BSTArray<RE::BGSHeadPart*> GetPlayerEyeColorOptionsFunction(RE::StaticFunctionTag*, int32_t playerSex, RE::TESRace* playerRace) {
 
-    logger::info("Player sex is {}, player race is {}", playerSex, playerRace->GetFormEditorID());
+    logger::info("'GetPlayerEyeColorOptionsFunction' was called.  Player sex is {}, player race is {}", playerSex, playerRace->GetFormEditorID());
 
     // Player eye color list to return
     RE::BSTArray<RE::BGSHeadPart*> player_eye_color_list;
@@ -62,7 +61,7 @@ RE::BSTArray<RE::BGSHeadPart*> GetPlayerEyeColorOptionsFunction(RE::StaticFuncti
 
         // ...start going through the list, and validate for any headParts with "unisex" option enabled
         for (const auto& entry : eye_color_list) {
-            logger::info("Verifying head part '{}'", entry->GetFormEditorID());
+            logger::info("Verifying eye head part '{}'", entry->GetFormEditorID());
             if (entry->flags == RE::BGSHeadPart::Flag::kNone) {
 
                 // ...then start validating the headPart's "validRaces" entry, to ensure it matches with player's race
@@ -81,12 +80,11 @@ RE::BSTArray<RE::BGSHeadPart*> GetPlayerEyeColorOptionsFunction(RE::StaticFuncti
 
         // ...start going through the list, and validate for any headParts with "male" or "unisex" option enabled
         for (const auto entry : eye_color_list) {
-            logger::info("Verifying head part '{}'", entry->GetFormEditorID());
+            logger::info("Verifying eye head part '{}'", entry->GetFormEditorID());
             if (entry->flags & RE::BGSHeadPart::Flag::kMale || entry->flags == RE::BGSHeadPart::Flag::kNone) {
 
                 // ...then start validating the headPart's "validRaces" entry, to ensure it matches with player's race
                 if (entry->validRaces->HasForm(playerRace)) {
-                    logger::info("validRace 'if-condition' has been met!");
 
                     // Found a match.  Add as an available eye color option for player
                     player_eye_color_list.push_back(entry);
@@ -101,7 +99,7 @@ RE::BSTArray<RE::BGSHeadPart*> GetPlayerEyeColorOptionsFunction(RE::StaticFuncti
 
         // ...start going through the list, and validate for any headParts with "female" or "unisex" option enabled
         for (const auto& entry : eye_color_list) {
-            logger::info("Verifying head part '{}'", entry->GetFormEditorID());
+            logger::info("Verifying eye head part '{}'", entry->GetFormEditorID());
             if (entry->flags & RE::BGSHeadPart::Flag::kFemale || entry->flags == RE::BGSHeadPart::Flag::kNone) {
 
                 // ...then start validating the headPart's "validRaces" entry, to ensure it matches with player's race
@@ -120,6 +118,7 @@ RE::BSTArray<RE::BGSHeadPart*> GetPlayerEyeColorOptionsFunction(RE::StaticFuncti
         logger::error("Unrecognized player sex: '{}'", playerSex);
     }
 
+    logger::info("Finished verifying all available eye head parts in load order.");
     return player_eye_color_list;
 }
 

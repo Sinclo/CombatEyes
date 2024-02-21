@@ -30,7 +30,7 @@ if(DEFINED ENV{SKYRIM_MODS_FOLDER} AND IS_DIRECTORY "$ENV{SKYRIM_MODS_FOLDER}")
 endif()
 
 # Otherwise, you can set OUTPUT_FOLDER to any place you'd like :)
-set(OUTPUT_FOLDER "$ENV{SKYRIM_MODS_FOLDER}/Combat Eyes")
+set(OUTPUT_FOLDER "$ENV{SKYRIM_MODS_FOLDER}/Combat Eyes (Local Testing Version)")
 
 # Setup your SKSE plugin as an SKSE plugin!
 find_package(CommonLibSSE CONFIG REQUIRED)
