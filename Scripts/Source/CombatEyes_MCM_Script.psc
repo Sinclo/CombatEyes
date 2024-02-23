@@ -7,6 +7,10 @@ HeadPart[] Property CombatEyeColorList Auto
 FormList Property CombatEyeColorFormList Auto
 int Property CombatEyeColorOptionIndex Auto
 
+Message Property CombatEyes_MessageBox_GenerateFinalCombatEyeColorList_MultipleProcessesDetected Auto
+Message Property CombatEyes_Notification_FinishRestartTask Auto
+Message Property CombatEyes_Notification_OnConfigClose_StartRestartTask Auto
+
 ; PROPERTIES (READ-ONLY)
 int Property ExpectedHeadPartType = 0x02 AutoReadOnly
 
@@ -57,7 +61,7 @@ Event OnConfigClose()
         isResetMCMOptionsEnabled = false
 
         string log = "Regenerating combat eye menu selection in 'Combat Eyes' MCM."
-        RestartTasks(log)
+        RestartTasks(log, CombatEyes_Notification_OnConfigClose_StartRestartTask)
         
     endIf
 
@@ -255,26 +259,38 @@ EndState
 Function StartTasks()
 
     CombatEyeColorOptionIndex = 0
-    GenerateFinalCombatEyeColorList()
+
+    ; Unlock the process here anytime this method is called. 
+    ; Note: This is designed so that if "StartTasks()" is ever triggered while eye generation is currently in process, we interrupt and stop that process prematurely, 
+    ; prior to this iteration starting.
+    isLocked = false 
+    Utility.Wait(1)
+
+    ; Generate unique 'processId' for the generate combat eyes process.  Designed for logging purposes.
+    string processId = Utility.GetCurrentRealTime() + "-" + Utility.RandomFloat()
+    GenerateFinalCombatEyeColorList(processId)
 
 EndFunction
 
-Function RestartTasks(string startLog, string finishLog = "New combat eye list has finished generating in the 'Combat Eyes' MCM.")
+Function RestartTasks(string startTraceLog, Message startMsgLog)
 
     ; Clear out old forms from "CombatEyeColorList"
     CombatEyeColorFormList.Revert()
     
-    Debug.Trace(startLog)
-    Debug.Notification(startLog)
+    ; Dynamic start logs for "RestartTasks() function"
+    Debug.Trace(startTraceLog)
+    startMsgLog.Show()        
     
     StartTasks()
 
-    Debug.Trace(finishLog)
-    Debug.Notification(finishLog)
+    ; Hardcoded finish logs for "RestartTasks()" function
+    string finishTraceLog = "New combat eye list has finished generating in the 'Combat Eyes' MCM."
+    Debug.Trace(finishTraceLog)
+    CombatEyes_Notification_FinishRestartTask.Show()
 
 EndFunction
 
-Function GenerateFinalCombatEyeColorList()
+Function GenerateFinalCombatEyeColorList(string processId)
 
     int playerSex = PlayerRef.GetActorBase().GetSex()
     Race playerRace = PlayerRef.GetActorBase().GetRace()
@@ -283,17 +299,22 @@ Function GenerateFinalCombatEyeColorList()
 
     ; Condition to put a lock on combat eye list menu generation, and prevent possibility of multiple processes running at the same time
     if(!isLocked)
+        Debug.Trace("[GenerateFinalCombatEyeColorList]: Eye generation processId '" + processId + "' has started.")
         isLocked = true
-        CombatEyeColorFormList = GetCombatEyeColorFormList(playerSex, playerRace)
-        combatEyeColorMCMOptions = GetCombatEyeColorMCMOptions(CombatEyeColorFormList)
+        CombatEyeColorFormList = GetCombatEyeColorFormList(playerSex, playerRace, processId)
+        combatEyeColorMCMOptions = GetCombatEyeColorMCMOptions(CombatEyeColorFormList, processId)
         isLocked = false
+        Debug.Trace("[GenerateFinalCombatEyeColorList]: Eye generation processId '" + processId + "' has finished.")
     else
-        Debug.Trace("[GenerateFinalCombatEyeColorList]: Combat eye menu generation already in progress.", 1)
+        ; Should ultimately never hit this condition, but provided as a safe guard just in case
+        Debug.Trace("[GenerateFinalCombatEyeColorList]: Combat eye menu generation already in progress.  Stopping all processes so a new one can be triggered manually.", 1)
+        isLocked = false
+        CombatEyes_MessageBox_GenerateFinalCombatEyeColorList_MultipleProcessesDetected.Show()
     endIf
 
 EndFunction
 
-FormList Function GetCombatEyeColorFormList(int playerSex, Race playerRace)
+FormList Function GetCombatEyeColorFormList(int playerSex, Race playerRace, string processId)
 
     ; Save this as a property, to also be used for comparison when player loads into game
     CombatEyeColorList = GetAllPlayerEyeColorOptions(playerSex, playerRace)
@@ -303,9 +324,22 @@ FormList Function GetCombatEyeColorFormList(int playerSex, Race playerRace)
 
     while (i < count)
     
-        CombatEyeColorFormList.AddForm(CombatEyeColorList[i])
-        Debug.Trace("Adding entry '" + CombatEyeColorList[i].GetPartName() + "' to 'CombatEyeColorList'")
-        i += 1
+        ; Check if lock is in place during each iteration, in case the eye generation process gets interrupted by a new "StartTask()" process.
+        ; This way if an end user triggers a new process while the current process is still running somehow, we stop the current process and let the new process run.
+        ;
+        ; Why this is important:
+        ;   - Use case #1: User continously enters race menu, chooses a race or sex, exits race menu, repeat 2-3+ times within a short period.
+        ;   - Use case #2: User manually triggers a new process from the MCM while a current process is already running.
+        ; In both cases, the use cases can result in invalid eye color selections displaying for the player (i.e. MaleArgonian eyes displaying for female wood elves, etc).  This check
+        ; is designed to prevent this use case from occurring for end users. 
+        if(isLocked)
+            CombatEyeColorFormList.AddForm(CombatEyeColorList[i])
+            Debug.Trace("ProcessId: '" + processId + "' - Adding entry '" + CombatEyeColorList[i].GetPartName() + "' to 'CombatEyeColorList'")
+            i += 1
+        else
+            Debug.Trace("Eye color generation for processId '" + processId + "' has been unlocked prematurely.  Ending the process early to avoid issues.", 2)
+            i = count
+        endIf
 
     endWhile
 
@@ -314,7 +348,7 @@ FormList Function GetCombatEyeColorFormList(int playerSex, Race playerRace)
 
 EndFunction
 
-string[] Function GetCombatEyeColorMCMOptions(FormList fList)
+string[] Function GetCombatEyeColorMCMOptions(FormList fList, string processId)
     Debug.Trace("Function 'GenerateCombatEyeColorMCMOptions' detected")
 
     int i = 0
@@ -324,11 +358,23 @@ string[] Function GetCombatEyeColorMCMOptions(FormList fList)
     
     while (i < fListCount)
         
-        HeadPart formOption = fList.GetAt(i) as HeadPart 
-        list[i] = formOption.GetPartName()
-        Debug.Trace("Adding MCM option: '" + list[i] + "'")
-
-        i += 1
+        ; Check if lock is in place during each iteration, in case the eye generation process gets interrupted by a new "StartTask()" process.
+        ; This way if an end user triggers a new process while the current process is still running somehow, we stop the current process and let the new process run.
+        ;
+        ; Why this is important:
+        ;   - Use case #1: User continously enters race menu, chooses a race or sex, exits race menu, repeat 2-3+ times within a short period.
+        ;   - Use case #2: User manually triggers a new process from the MCM while a current process is already running.
+        ; In both cases, the use cases can result in invalid eye color selections displaying for the player (i.e. MaleArgonian eyes displaying for female wood elves, etc).  This check
+        ; is designed to prevent this use case from occurring for end users. 
+        if(isLocked)
+            HeadPart formOption = fList.GetAt(i) as HeadPart 
+            list[i] = formOption.GetPartName()
+            Debug.Trace("ProcessId: '" + processId + "' - Adding MCM option: '" + list[i] + "'")
+            i += 1
+        else
+            Debug.Trace("Eye color generation for processId '" + processId + "' has been unlocked prematurely.  Ending the process early to avoid issues.", 2)
+            i = fListCount
+        endIf
 
     endWhile
     

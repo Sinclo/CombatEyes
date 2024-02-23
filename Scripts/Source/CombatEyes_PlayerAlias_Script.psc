@@ -7,7 +7,13 @@ Race Property PlayerRace Auto
 bool Property IsPlayerVampire Auto
 
 FormList Property CombatEyeColorFormList Auto
-FormList Property CombatEyeVampireRaceList Auto  
+FormList Property CombatEyeVampireRaceList Auto
+
+Message Property CombatEyes_MessageBox_OnVampirismStateChanged_ForcePrimaryEyeColor Auto
+Message Property CombatEyes_Notification_OnMenuClose_StartRestartTask Auto
+Message Property CombatEyes_Notification_OnPlayerLoadGame_StartRestartTask Auto
+Message Property CombatEyes_Notification_OnVampirismStateChanged_StartRestartTask Auto
+Message Property CombatEyes_Notification_OnVampirismStateChanged_VampirismDetected Auto
 
 ; PROPERTIES (READ-ONLY)
 string Property AnimationEvent_WeaponDraw = "weaponDraw" AutoReadOnly
@@ -27,14 +33,12 @@ bool isWeaponDrawnConfigEnabled
 bool isEnterCombatConfigEnabled
 bool isPlayerDyingConfigEnabled
 
-
 Event OnInit()
 	Debug.Trace("Event 'OnInit' detected, from PlayerAlias_Script")
 	Utility.Wait(3.0)
 
 	OnInitialized()
 EndEvent
-
 
 Event OnInitialized()
 	Debug.Trace("Event 'OnInitialized' detected, from PlayerAlias_Script")
@@ -79,8 +83,8 @@ Event OnPlayerLoadGame()
 	if(!IsPlayerVampire)
 		HeadPart[] newPlayerCombatEyeColorList = ceMCM.GetAllPlayerEyeColorOptions(PlayerSex, PlayerRace)
 		if (newPlayerCombatEyeColorList != ceMCM.CombatEyeColorList)
-			string log = "Eye color option changes detected.  Regenerating combat eye menu selection in 'Combat Eyes' MCM."
-			ceMCM.RestartTasks(log)
+			string startTraceLog = "Eye color option changes detected.  Regenerating combat eye menu selection in 'Combat Eyes' MCM."
+			ceMCM.RestartTasks(startTraceLog, CombatEyes_Notification_OnPlayerLoadGame_StartRestartTask)
 		endIf
 	endIf
 
@@ -90,24 +94,27 @@ EndEvent
 Event OnMenuClose(string menuName)
 	if(menuName == Menu_RaceSexMenu)
 		Debug.Trace("[OnMenuClose]: Player has exited the race sex menu.")
-	    Utility.Wait(1.0)
 
 		primaryEyeColor = GetPrimaryEyeColor()
 		int newPlayerSex = PlayerRef.GetActorBase().GetSex()
 		Race newPlayerRace = PlayerRef.GetActorBase().GetRace()
+
+		Debug.Trace("[OnMenuClose]: 'newPlayerSex' is: " + newPlayerSex)
+		Debug.Trace("[OnMenuClose]: 'PlayerSex' is: " + PlayerSex)
+		Debug.Trace("[OnMenuClose]: 'newPlayerRace' is: " + newPlayerRace)
+		Debug.Trace("[OnMenuClose]: 'PlayerRace' is: " + PlayerRace)
 
 		; Keep track of whether a player race or sex change has occurred from RaceSexMenu. 
 		; If so, we'll want to generate a new combat eye selection menu that is compatible with the player's new race/sex combination
 		if((newPlayerSex != PlayerSex) || (newPlayerRace != PlayerRace))
 						
 			; Generate a new set of forms to "CombatEyeColorList"
-			string log = "New player race and/or sex detected.  Generating new menu selection in 'Combat Eyes' MCM."
-			ceMCM.RestartTasks(log)
+			string startTraceLog = "New player race and/or sex detected.  Generating new menu selection in 'Combat Eyes' MCM."
+			ceMCM.RestartTasks(startTraceLog, CombatEyes_Notification_OnMenuClose_StartRestartTask)
 
 		endIf
-	    RegisterForSingleUpdate(0)
+	    RegisterForSingleUpdate(1)
 	endif
-
 EndEvent
 
 ;/ 
@@ -153,8 +160,8 @@ Event OnVampirismStateChanged(bool abIsVampire)
 	GetPlayerInfo()	
 	if(abIsVampire)
 		
-		string log = "Vampirism detected on player.  Disabling combat eye menu selection in 'Combat Eyes' MCM"
-		Debug.Notification(log)
+		Debug.Trace("[OnVampirismStateChanged]: Vampirism detected on player.  Disabling combat eye menu selection in 'Combat Eyes' MCM")
+		CombatEyes_Notification_OnVampirismStateChanged_VampirismDetected.Show()
 
 		isEyeCheckTickEnabled = false
 		RegisterForSingleUpdate(0.1)
@@ -167,11 +174,12 @@ Event OnVampirismStateChanged(bool abIsVampire)
 		; other potentially incorrect eyes when transitioning from vampire back to non-vampire race
 		if(primaryEyeColor == None || !IsEyeColorValidForPlayerRace(primaryEyeColor, PlayerRace))
 			
-			; Force select a valid eye color for player, based on player's sex and race.
+			; Log this event and inform user of this issue as well, prior to actually force selecting the eye color for player
 			string traceLog = "[OnVampirismStateChanged]: Unable to detect player's original eye color.  Attempting to force a valid eye color for player"
-			string notificationLog = "Unable to detect player's original eye color.  Forcing a valid eye color for player"
 			Debug.Trace(traceLog, 1)
-			Debug.Notification(notificationLog)			
+			CombatEyes_MessageBox_OnVampirismStateChanged_ForcePrimaryEyeColor.Show()	
+
+			; Force select a valid eye color for player, based on player's sex and race.
 			primaryEyeColor = ceMCM.GetAllPlayerEyeColorOptions(PlayerSex, PlayerRace)[0]
 			ChangePlayerEyeColor(primaryEyeColor)			
 		endIf
@@ -179,8 +187,8 @@ Event OnVampirismStateChanged(bool abIsVampire)
 		RegisterForSingleUpdate(0.1)
 		
 		; Generate a new set of forms to "CombatEyeColorList"
-		string startLog = "Vampirism no longer detected on player.  Regenerating combat eye menu selection in 'Combat Eyes' MCM"
-		ceMCM.RestartTasks(startLog)
+		string startTraceLog = "Vampirism no longer detected on player.  Regenerating combat eye menu selection in 'Combat Eyes' MCM"
+		ceMCM.RestartTasks(startTraceLog, CombatEyes_Notification_OnVampirismStateChanged_StartRestartTask)
 	endIf
 EndEvent
 
@@ -299,7 +307,7 @@ Function CheckEyeColorConditions()
 			ChangePlayerEyeColor(primaryEyeColor)
 		endIf
 	else
-		Debug.Trace("Skipping 'CheckEyeColorCondition' check, due to player vampirism", 1)
+		Debug.Trace("[CheckEyeColorConditions]: Skipping 'CheckEyeColorCondition' check, due to player vampirism", 1)
 	endIf
 
 	; This condition triggers a check for combat eye eligibility periodically.  
@@ -373,9 +381,6 @@ bool Function IsPlayerVampireRace(Race playerRaceParam)
 
 	while (i < listOfVampireRacesCount)
 
-		; Debug.Trace("listOfVampireRaces '" + i + "'' entry is: " + listOfVampireRaces.GetAt(i).GetName())
-		; Debug.Trace("playerRaceParam is: " + playerRaceParam.GetName())
-
 		if(playerRaceParam == listOfVampireRaces.GetAt(i) as Race)
 		
 			; Found a match, meaning player is a vampire
@@ -426,7 +431,7 @@ bool Function IsEyeColorValidForPlayerRace(HeadPart hPart, Race playerRaceParam)
 
 		endWhile
 	else
-		Debug.Trace("Provided head part param is type: '" + headPartType + "''. Head part for this function must be type '" + HeadPartTypeEyes + "'.", 2)
+		Debug.Trace("[IsEyeColorValidForPlayerRace]: Provided head part param is type: '" + headPartType + "''. Head part for this function must be type '" + HeadPartTypeEyes + "'.", 2)
 	endIf
 
 	return isValid
@@ -435,7 +440,6 @@ EndFunction
 
 ; MAKE USE OF THIS FOR POTENTIAL VAMPIRE RACE COMPATIBILITY
 HeadPart Function GetEyeColorOverlay()
-
 	Debug.Trace("Function 'GetEyeColorOverlay' detected")
 
 	ActorBase playerActorBase = PlayerRef.GetActorBase()
@@ -452,7 +456,7 @@ HeadPart Function GetEyeColorOverlay()
 
         if(headPartType == HeadPartTypeEyes)
             eyeHeadPartOverlay = playerActorBase.GetNthOverlayHeadPart(i)
-			Debug.Trace("GetEyeColorOverlay - Detected 'eyePart' on vampire (" + isPlayerVampire + "): " + eyeHeadPartOverlay.GetPartName())
+			Debug.Trace("[GetEyeColorOverlay]: Detected 'eyePart' on vampire (" + isPlayerVampire + "): " + eyeHeadPartOverlay.GetPartName())
 			numOfEyeHeadPartsOnVampire += 1
         endIf
 
@@ -460,10 +464,10 @@ HeadPart Function GetEyeColorOverlay()
 
     endWhile
 
-	Debug.Trace("HeadPartTroubleShooting - numOfEyeHeadPartsOnVampire found on vampire (" + isPlayerVampire + ") is: " + numOfEyeHeadPartsOnVampire)
+	Debug.Trace("[GetEyeColorOverlay]: numOfEyeHeadPartsOnVampire found on vampire (" + isPlayerVampire + ") is: " + numOfEyeHeadPartsOnVampire)
 
 	if(numOfEyeHeadPartsOnVampire > 1)
-		Debug.Trace("Detected multiple eye overlays", 2)
+		Debug.Trace("[GetEyeColorOverlay]: Detected multiple eye overlays", 2)
 	endIf
 
 	return eyeHeadPartOverlay

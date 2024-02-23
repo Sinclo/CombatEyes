@@ -62,7 +62,7 @@ RE::BSTArray<RE::BGSHeadPart*> GetPlayerEyeColorOptionsFunction(RE::StaticFuncti
         // ...start going through the list, and validate for any headParts with "unisex" option enabled
         for (const auto& entry : eye_color_list) {
             logger::info("Verifying eye head part '{}'", entry->GetFormEditorID());
-            if (entry->flags == RE::BGSHeadPart::Flag::kNone) {
+            if (entry->flags & RE::BGSHeadPart::Flag::kPlayable) {
 
                 // ...then start validating the headPart's "validRaces" entry, to ensure it matches with player's race
                 if (entry->validRaces->HasForm(playerRace)) {
@@ -81,7 +81,7 @@ RE::BSTArray<RE::BGSHeadPart*> GetPlayerEyeColorOptionsFunction(RE::StaticFuncti
         // ...start going through the list, and validate for any headParts with "male" or "unisex" option enabled
         for (const auto entry : eye_color_list) {
             logger::info("Verifying eye head part '{}'", entry->GetFormEditorID());
-            if (entry->flags & RE::BGSHeadPart::Flag::kMale || entry->flags == RE::BGSHeadPart::Flag::kNone) {
+            if (entry->flags & RE::BGSHeadPart::Flag::kPlayable && !(entry->flags & RE::BGSHeadPart::Flag::kFemale)) {
 
                 // ...then start validating the headPart's "validRaces" entry, to ensure it matches with player's race
                 if (entry->validRaces->HasForm(playerRace)) {
@@ -100,7 +100,7 @@ RE::BSTArray<RE::BGSHeadPart*> GetPlayerEyeColorOptionsFunction(RE::StaticFuncti
         // ...start going through the list, and validate for any headParts with "female" or "unisex" option enabled
         for (const auto& entry : eye_color_list) {
             logger::info("Verifying eye head part '{}'", entry->GetFormEditorID());
-            if (entry->flags & RE::BGSHeadPart::Flag::kFemale || entry->flags == RE::BGSHeadPart::Flag::kNone) {
+            if (entry->flags & RE::BGSHeadPart::Flag::kPlayable && !(entry->flags & RE::BGSHeadPart::Flag::kMale)) {
 
                 // ...then start validating the headPart's "validRaces" entry, to ensure it matches with player's race
                 if (entry->validRaces->HasForm(playerRace)) {
