@@ -1,3 +1,9 @@
+# Skyrim Mod: 
+
+- https://www.nexusmods.com/skyrimspecialedition/mods/111848
+
+# CommonLibSSE:
+
 > 📜 other templates available at https://github.com/SkyrimScripting/SKSE_Templates
 
 # SKSE - working with Forms (game objects)
