@@ -6,13 +6,15 @@ Actor Property PlayerRef Auto
 HeadPart[] Property CombatEyeColorList Auto
 FormList Property CombatEyeColorFormList Auto
 int Property CombatEyeColorOptionIndex Auto
+bool Property isVampireMCMWarningDisplayedBefore Auto ; Designed to display for player only ONCE per non-vampire -> vampire transition
 
 Message Property CombatEyes_MessageBox_GenerateFinalCombatEyeColorList_MultipleProcessesDetected Auto
 Message Property CombatEyes_Notification_FinishRestartTask Auto
 Message Property CombatEyes_Notification_OnConfigClose_StartRestartTask Auto
 
 ; PROPERTIES (READ-ONLY)
-int Property ExpectedHeadPartType = 0x02 AutoReadOnly
+string Property VampirismMCMWarningMessage = "NOTE: Vampirism detected on player. \n\nDue to known compatibility issues with vampirism, this mod is purposely intended to disable itself for vampire players by default, for the best player experience.  \n\nMod functionality can only be restored by activating the 'Enable for vampires' configuration (which is NOT recommended), or by curing player of vampirism." AutoReadOnly
+string Property VampirismMCMSettingWarningMessage = "\n\nNOTE: Vampirism detected on player. Due to known compatibility issues with vampirism, this mod will purposely ignore this setting unless the 'Enable for vampires' configuration is enabled (which is NOT recommended), or player is cured of vampirism." AutoReadOnly
 
 ; VARIABLES
 CombatEyes_PlayerAlias_Script ceAlias
@@ -24,11 +26,11 @@ bool isLocked = false ; Default to false
 bool Property isWeaponDrawnConfigEnabled Auto
 bool Property isEnterCombatConfigEnabled Auto
 bool Property isPlayerDyingConfigEnabled Auto
+bool Property isVampireConfigEnabled Auto
 bool isResetMCMOptionsEnabled
 
 ; MCM CONFIGURATION FLAGS
 int isPlayerDyingConfigOptionFlag
-int isResetMCMOptionsOptionFlag
 
 ; MCM PAGE NAMES
 string page1 = "Combat Eyes"
@@ -72,6 +74,11 @@ EndEvent
 
 Event OnPageReset(string page)
 
+    ; In case player attempts to use mod for first time as a vampire, display warning message once per non-vampire -> vampire transition, to inform them of mod being disabled by default
+    if (ceAlias.IsPlayerVampire && !isVampireMCMWarningDisplayedBefore)
+        ShowVampireMCMWarningMessage()
+    endIf
+
     if (page == page1)
 
         SetCursorFillMode(TOP_TO_BOTTOM)
@@ -82,13 +89,8 @@ Event OnPageReset(string page)
         ; "Select Combat Eye Color" section
         AddHeaderOption("Select Combat Eye Color")
 
-        ; If player is a vampire, disable combat eye menu selection for now
-        if(ceAlias.IsPlayerVampire)
-            AddTextOption("", "Combat Eyes mod is currently ", OPTION_FLAG_DISABLED)
-            AddTextOption("", "unsupported for vampire races.", OPTION_FLAG_DISABLED)
-
         ; If menu initialization is in progress, inform user
-        elseIf(isLocked)
+        if(isLocked)
             AddTextOption("", "Menu initialization in progress...", OPTION_FLAG_DISABLED)
             AddTextOption("", "Check back again in a moment...", OPTION_FLAG_DISABLED)
         
@@ -133,12 +135,8 @@ Event OnPageReset(string page)
         ; "Miscellaneous" section
         AddHeaderOption("Miscellaneous")
 
-        if(!IsResetMCMOptionPrerequisitesMet())  
-            isResetMCMOptionsOptionFlag = OPTION_FLAG_DISABLED
-        else
-            isResetMCMOptionsOptionFlag = OPTION_FLAG_NONE
-        endIf
-        AddToggleOptionST("ResetMCMStateOptions", "Reset combat eye menu selection", isResetMCMOptionsEnabled, isResetMCMOptionsOptionFlag)
+        AddToggleOptionST("ResetMCMStateOptions", "Reset combat eye color selection menu", isResetMCMOptionsEnabled)
+        AddToggleOptionST("VampireConfigStateOption", "Enable for vampires", isVampireConfigEnabled)
 
     endIf
 
@@ -158,7 +156,11 @@ State SelectCombatEyeStateOption
     EndEvent
 
     Event OnHighlightST()
-        SetInfoText("Select combat eyes to apply to player.")
+        if(ceAlias.IsPlayerVampire && !isVampireConfigEnabled)
+            SetInfoText("Select combat eyes to apply to player. " + VampirismMCMSettingWarningMessage)
+        else
+            SetInfoText("Select combat eyes to apply to player.")
+        endIf
     EndEvent
 
 EndState
@@ -186,7 +188,11 @@ State WeaponDrawnConfigStateOption
     EndEvent
 
     Event OnHighlightST()
-        SetInfoText("Enable combat eyes when player draws their weapon, magic, or both.")
+        if(ceAlias.IsPlayerVampire && !isVampireConfigEnabled)
+            SetInfoText("Enable combat eyes when player draws their weapon, magic, or both. " + VampirismMCMSettingWarningMessage)
+        else
+            SetInfoText("Enable combat eyes when player draws their weapon, magic, or both.")
+        endIf
     EndEvent
 
 EndState
@@ -200,7 +206,7 @@ State EnterCombatConfigStateOption
             isEnterCombatConfigEnabled = true
         endIf
 
-        ;Update isPlayerDyingConfig if necessary
+        ; Update isPlayerDyingConfig if necessary
         if(!IsPlayerDyingConfigPrerequisitesMet())
             isPlayerDyingConfigOptionFlag = OPTION_FLAG_DISABLED
 
@@ -214,7 +220,11 @@ State EnterCombatConfigStateOption
     EndEvent
 
     Event OnHighlightST()
-        SetInfoText("Enable combat eyes when player is attacked in combat.")
+        if(ceAlias.IsPlayerVampire && !isVampireConfigEnabled)
+            SetInfoText("Enable combat eyes when player is attacked in combat. " + VampirismMCMSettingWarningMessage)
+        else
+            SetInfoText("Enable combat eyes when player is attacked in combat.")
+        endIf
     EndEvent
 
 EndState
@@ -232,7 +242,33 @@ State PlayerDyingConfigStateOption
     EndEvent
 
     Event OnHighlightST()
-        SetInfoText("If disabled, player will temporarily lose combat eyes while below 20% health.  If enabled, player will continue to persist combat eyes even while below 20% health.")
+        if(ceAlias.IsPlayerVampire && !isVampireConfigEnabled)
+            SetInfoText("If disabled, player will temporarily lose combat eyes while below 20% health.  If enabled, player will continue to persist combat eyes while below 20% health. " + VampirismMCMSettingWarningMessage)
+        else
+            SetInfoText("If disabled, player will temporarily lose combat eyes while below 20% health.  If enabled, player will continue to persist combat eyes while below 20% health.")
+        endIf
+    EndEvent
+
+EndState
+
+State VampireConfigStateOption
+
+    Event OnSelectST()
+        if (isVampireConfigEnabled)
+            isVampireConfigEnabled = false
+        else
+            isVampireConfigEnabled = true
+
+            string a_message = "NOTE: It is STRONGLY recommended to keep this setting disabled.  \n\nIf you choose to enable this configuration anyway, you may experience other unpredictable behaviors while your player is a vampire (i.e. eye clipping, eye colors not changing correctly, eyes gradually morphing and stretching through the player's head, etc).  \n\nIf you face these issues, you can potentially fix these issues by disabling this MCM toggle again, followed by opening the race sex menu to restore your former appearance.  \n\nEnable at your own risk.  You have been warned..."
+            string a_acceptLabel = "I have read the above, and understand the risks"
+            ShowMessage(a_message, false, a_acceptLabel)
+        endIf
+
+        SetToggleOptionValueST(isVampireConfigEnabled)
+    EndEvent
+
+    Event OnHighlightST()
+        SetInfoText("NOTE: STRONGLY recommended to keep this setting disabled.  \nIf disabled, the mod will automatically disable itself while player is a vampire, regardless of other MCM settings.  \nIf enabled, the mod will stay enabled while player is a vampire, honoring the other MCM settings.  However, you will likely experience other unpredictable behaviors (i.e. eye clipping, eye colors not changing correctly, eyes gradually morphing and stretching through the player's head, etc). \nEnable at your own risk.")
     EndEvent
 
 EndState
@@ -244,17 +280,22 @@ State ResetMCMStateOptions
             isResetMCMOptionsEnabled = false
         else
             isResetMCMOptionsEnabled = true
-            ShowMessage("If this setting is left enabled, the combat eye menu selection will be reinitialized again after exiting this menu. Please wait up to a few seconds. You will receive a notification once menu initialization is complete.", false)
+            ShowMessage("If this setting is left enabled, the combat eye color selection menu will be reinitialized again after exiting this MCM. Please wait up to a few seconds. You will receive a notification once menu initialization is complete.", false)
         endIf
         
         SetToggleOptionValueST(isResetMCMOptionsEnabled)
     EndEvent
 
     Event OnHighlightST()
-        SetInfoText("If enabled, combat eye selection menu will be reinitialized again after exiting this menu. Useful if you don't see your expected set of eye colors, and want to refresh the menu.")
+        SetInfoText("If enabled, combat eye color selection menu will be reinitialized again after exiting this MCM. Useful if you don't see your expected set of eye colors, and want to refresh the menu.")
     EndEvent
 
 EndState
+
+Function ShowVampireMCMWarningMessage()
+    ShowMessage(VampirismMCMWarningMessage, false, "I understand")
+    isVampireMCMWarningDisplayedBefore = true
+EndFunction
 
 Function StartTasks()
 
@@ -400,26 +441,13 @@ bool Function IsPlayerDyingConfigPrerequisitesMet()
 
 EndFunction
 
-bool Function IsResetMCMOptionPrerequisitesMet()
-    Debug.Trace("Function 'IsResetMCMOptionPrerequisitesMet' detected")
-
-    bool isPrerequisitesMet = false
-    bool isVampire = ceAlias.IsPlayerVampire
-
-    if(!isVampire)  
-        isPrerequisitesMet = true
-    endIf
-
-    return isPrerequisitesMet
-
-EndFunction
-
 Function LoadDefaultMCMSettings()
 
     ; Default MCM settings
     isWeaponDrawnConfigEnabled = false
     isEnterCombatConfigEnabled = false
     isPlayerDyingConfigEnabled = false
+    isVampireConfigEnabled = false
 
 EndFunction
 

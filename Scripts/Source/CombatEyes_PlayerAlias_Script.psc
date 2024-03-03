@@ -9,22 +9,25 @@ bool Property IsPlayerVampire Auto
 FormList Property CombatEyeColorFormList Auto
 FormList Property CombatEyeVampireRaceList Auto
 
+Keyword Property MagicInvisibility  Auto  
+
 Message Property CombatEyes_MessageBox_OnVampirismStateChanged_ForcePrimaryEyeColor Auto
 Message Property CombatEyes_Notification_OnMenuClose_StartRestartTask Auto
 Message Property CombatEyes_Notification_OnPlayerLoadGame_StartRestartTask Auto
-Message Property CombatEyes_Notification_OnVampirismStateChanged_StartRestartTask Auto
-Message Property CombatEyes_Notification_OnVampirismStateChanged_VampirismDetected Auto
+Message Property CombatEyes_Notification_OnVampirismStateChanged_VampirismDetected_StartRestartTask Auto
+Message Property CombatEyes_Notification_OnVampirismStateChanged_VampirismNoLongerDetected_StartRestartTask Auto
 
 ; PROPERTIES (READ-ONLY)
 string Property AnimationEvent_WeaponDraw = "weaponDraw" AutoReadOnly
 string Property AnimationEvent_WeaponSheathe = "weaponSheathe" AutoReadOnly
 string Property Menu_RaceSexMenu = "RaceSex Menu" AutoReadOnly
-int Property HeadPartTypeEyes = 0x02 AutoReadOnly
+int Property HeadPartTypeEyes = 2 AutoReadOnly
 
 ; VARIABLES
 CombatEyes_MCM_Script ceMCM
 HeadPart primaryEyeColor
 HeadPart combatEyeColor
+HeadPart currentEyeColor
 
 bool isEyeCheckTickEnabled = false
 
@@ -32,6 +35,7 @@ bool isEyeCheckTickEnabled = false
 bool isWeaponDrawnConfigEnabled
 bool isEnterCombatConfigEnabled
 bool isPlayerDyingConfigEnabled
+bool isVampireConfigEnabled
 
 Event OnInit()
 	Debug.Trace("Event 'OnInit' detected, from PlayerAlias_Script")
@@ -79,13 +83,10 @@ Event OnPlayerLoadGame()
 
 	; Account for use case where a player may have added/removed mods or eye color options between saves.  
 	; If this is detected, automatically regenerate the menu selection in Combat Eyes MCM and inform the user, to avoid confusion.
-	; However, ignore all of this if player is a vampire on game load.
-	if(!IsPlayerVampire)
-		HeadPart[] newPlayerCombatEyeColorList = ceMCM.GetAllPlayerEyeColorOptions(PlayerSex, PlayerRace)
-		if (newPlayerCombatEyeColorList != ceMCM.CombatEyeColorList)
-			string startTraceLog = "Eye color option changes detected.  Regenerating combat eye menu selection in 'Combat Eyes' MCM."
-			ceMCM.RestartTasks(startTraceLog, CombatEyes_Notification_OnPlayerLoadGame_StartRestartTask)
-		endIf
+	HeadPart[] newPlayerCombatEyeColorList = ceMCM.GetAllPlayerEyeColorOptions(PlayerSex, PlayerRace)
+	if (newPlayerCombatEyeColorList != ceMCM.CombatEyeColorList)
+		string startTraceLog = "Eye color option changes detected.  Regenerating combat eye menu selection in 'Combat Eyes' MCM."
+		ceMCM.RestartTasks(startTraceLog, CombatEyes_Notification_OnPlayerLoadGame_StartRestartTask)
 	endIf
 
 	RegisterForSingleUpdate(0.01)
@@ -96,6 +97,7 @@ Event OnMenuClose(string menuName)
 		Debug.Trace("[OnMenuClose]: Player has exited the race sex menu.")
 
 		primaryEyeColor = GetPrimaryEyeColor()
+
 		int newPlayerSex = PlayerRef.GetActorBase().GetSex()
 		Race newPlayerRace = PlayerRef.GetActorBase().GetRace()
 
@@ -142,15 +144,8 @@ Event OnRaceSwitchComplete()
 EndEvent
 
 ;/
-	Handles mod behavior based on player's vampire status.
-	
-	If player transitions to vampirism, unfortunately we have to disable
-	mod functionality and its MCM, (due to issues with 
-	vampire headpart overlays interfering with general mod behavior, and 
-	with no direct way to control it while player is in vampirism). 
-
-	If player transitions out of vampirism, restore mod functionality
-	and its MCM.
+	Handles mod behavior based on player's vampire status
+	and the 'isVampireConfigEnabled' MCM setting.
 /;
 Event OnVampirismStateChanged(bool abIsVampire)
 	Debug.Trace("Function 'OnVampirismStateChanged' detected. State of vampirism is: " + abIsVampire)
@@ -159,11 +154,19 @@ Event OnVampirismStateChanged(bool abIsVampire)
 	
 	GetPlayerInfo()	
 	if(abIsVampire)
-		
-		Debug.Trace("[OnVampirismStateChanged]: Vampirism detected on player.  Disabling combat eye menu selection in 'Combat Eyes' MCM")
-		CombatEyes_Notification_OnVampirismStateChanged_VampirismDetected.Show()
+		Debug.Trace("[OnVampirismStateChanged]: Vampirism detected on player.")
 
-		isEyeCheckTickEnabled = false
+		primaryEyeColor = GetPrimaryEyeColor()
+
+		; Set variable to warn user that mod will be disabled for vampirism by default
+		ceMCM.isVampireMCMWarningDisplayedBefore = false
+		
+		if(!isVampireConfigEnabled)
+			isEyeCheckTickEnabled = false
+		endIf
+
+		string startTraceLog = "Vampirism detected on player. Regenerating combat eye menu selection in 'Combat Eyes' MCM."
+		ceMCM.RestartTasks(startTraceLog, CombatEyes_Notification_OnVampirismStateChanged_VampirismDetected_StartRestartTask)
 		RegisterForSingleUpdate(0.1)
 	else
 
@@ -188,7 +191,7 @@ Event OnVampirismStateChanged(bool abIsVampire)
 		
 		; Generate a new set of forms to "CombatEyeColorList"
 		string startTraceLog = "Vampirism no longer detected on player.  Regenerating combat eye menu selection in 'Combat Eyes' MCM"
-		ceMCM.RestartTasks(startTraceLog, CombatEyes_Notification_OnVampirismStateChanged_StartRestartTask)
+		ceMCM.RestartTasks(startTraceLog, CombatEyes_Notification_OnVampirismStateChanged_VampirismNoLongerDetected_StartRestartTask)
 	endIf
 EndEvent
 
@@ -196,9 +199,10 @@ Event OnAnimationEvent(ObjectReference akSource, String asEventName)
 	
 	Debug.Trace("Event 'OnAnimationEvent' detected")
 	Debug.Trace("[OnAnimationEvent]: isPlayerVampire is " + isPlayerVampire)
+	Debug.Trace("[OnAnimationEvent]: isVampireConfigEnabled is " + isVampireConfigEnabled)
 	Debug.Trace("[OnAnimationEvent]: isWeaponDrawnConfigEnabled is " + isWeaponDrawnConfigEnabled)
 
-	if (!isPlayerVampire)
+	if (!isPlayerVampire || (isPlayerVampire && isVampireConfigEnabled))
 		; Change player eyes if toggle setting for draw/sheathe is enabled.
 		if (isWeaponDrawnConfigEnabled)
 			if (asEventName == AnimationEvent_WeaponDraw || asEventName == AnimationEvent_WeaponSheathe)
@@ -212,9 +216,10 @@ Event OnHit(ObjectReference akAggressor, Form akSource, Projectile akProjectile,
 	
 	Debug.Trace("Event 'OnHit' detected")
 	Debug.Trace("[OnHit]: isPlayerVampire is: " + isPlayerVampire)
+	Debug.Trace("[OnHit]: isVampireConfigEnabled is: " + isVampireConfigEnabled)
 	Debug.Trace("[OnHit]: isEnterCombatConfigEnabled is: " + isEnterCombatConfigEnabled)
 
-	if (!isPlayerVampire)
+	if (!isPlayerVampire || (isPlayerVampire && isVampireConfigEnabled))
 		; Change player eyes if toggle setting for combat is enabled.
 		if (isEnterCombatConfigEnabled)
 			RegisterForSingleUpdate(0.01)
@@ -236,6 +241,7 @@ Function GetConfigs()
 	isWeaponDrawnConfigEnabled = ceMCM.isWeaponDrawnConfigEnabled
 	isEnterCombatConfigEnabled = ceMCM.isEnterCombatConfigEnabled
 	isPlayerDyingConfigEnabled = ceMCM.isPlayerDyingConfigEnabled
+	isVampireConfigEnabled = ceMCM.isVampireConfigEnabled
 EndFunction
 
 Function Registration()
@@ -286,11 +292,14 @@ EndFunction
 ; eyes between chosen primary eye color & combat eye color, 
 ; based on several conditions.
 Function CheckEyeColorConditions()
-
 	Debug.Trace("Function 'CheckEyeColorConditions' detected")
-	Debug.Trace("[CheckEyeColorConditions]: isPlayerVampire is: " + isPlayerVampire)
 
-	if (!isPlayerVampire)
+	bool isInvisible = isPlayerInvisible()
+	Debug.Trace("[CheckEyeColorConditions]: isPlayerVampire is: " + isPlayerVampire)
+	Debug.Trace("[CheckEyeColorConditions]: isVampireConfigEnabled is: " + isVampireConfigEnabled)
+	Debug.Trace("[CheckEyeColorConditions]: isInvisible is: " + isInvisible)
+
+	if ((!isPlayerVampire || (isPlayerVampire && isVampireConfigEnabled)) && !isInvisible)
 		bool isEligibleForCombatEyes = IsPlayerEligibleForCombatEyes()
 
 		Debug.Trace("[CheckEyeColorConditions]: 'isEligibleForCombatEyes' is: " + isEligibleForCombatEyes)
@@ -300,14 +309,13 @@ Function CheckEyeColorConditions()
 			; Update eye color to player
 			Debug.Trace("[CheckEyeColorConditions]: Setting to combat eyes: " + combatEyeColor.GetName())
 			ChangePlayerEyeColor(combatEyeColor)
-
 		else
 			; Update eye color to player
 			Debug.Trace("[CheckEyeColorConditions]: Setting to primary eyes: " + primaryEyeColor.GetName())
 			ChangePlayerEyeColor(primaryEyeColor)
 		endIf
 	else
-		Debug.Trace("[CheckEyeColorConditions]: Skipping 'CheckEyeColorCondition' check, due to player vampirism", 1)
+		Debug.Trace("[CheckEyeColorConditions]: Skipping 'CheckEyeColorCondition' check, due to conditions not being met", 1)
 	endIf
 
 	; This condition triggers a check for combat eye eligibility periodically.  
@@ -326,10 +334,9 @@ bool Function IsPlayerEligibleForCombatEyes()
 	
 	bool isEligibleForCombatEyes = false
 
-	; If player is a vampire, they would be ineligible to use mod
-	; functionality.  Please stop here and don't allow script
-	; to proceed through remainder of this function. 
-	if(IsPlayerVampire)
+	; If player is a vampire AND 'isVampireConfigEnabled' = false, they would be ineligible to use mod
+	; functionality.  Please stop here and don't allow script to proceed through remainder of this function. 
+	if(IsPlayerVampire && !isVampireConfigEnabled)
 		isEyeCheckTickEnabled = false
 		return isEligibleForCombatEyes
 	endIf
@@ -365,7 +372,13 @@ bool Function IsPlayerEligibleForCombatEyes()
 EndFunction
 
 Function ChangePlayerEyeColor(HeadPart eyeColor)
-	PlayerRef.ChangeHeadPart(eyeColor)
+
+	; An additional check added to only allow eye color change IF the requested eye color change is different from what the player already CURRENTLY has selected
+	; Accounts for the 'isEyeCheckTickEnabled' use case, which can result in other reported issues while this check is enabled (i.e. physics & animations being reset on a player every few seconds, etc).
+	if(currentEyeColor != eyeColor)
+		PlayerRef.ChangeHeadPart(eyeColor)
+		currentEyeColor = eyeColor
+	endIf
 EndFunction
 
 ; Check if player is currently a vampire race
@@ -436,6 +449,19 @@ bool Function IsEyeColorValidForPlayerRace(HeadPart hPart, Race playerRaceParam)
 
 	return isValid
 
+EndFunction
+
+; Checks if player is invisible.
+bool Function IsPlayerInvisible()
+	Debug.Trace("Function 'IsPlayerInvisible' detected")
+	
+	bool isInvisible = false
+	if(PlayerRef.HasMagicEffectWithKeyword(MagicInvisibility))
+		isInvisible = true
+	endIf
+
+	Debug.Trace("[IsPlayerInvisible]: 'IsPlayerInvisible' is: " + isInvisible)
+	return isInvisible
 EndFunction
 
 ; MAKE USE OF THIS FOR POTENTIAL VAMPIRE RACE COMPATIBILITY
